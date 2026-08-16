@@ -106,11 +106,14 @@ app.post('/process', async (req, res, next) => {
 // 3. ERROR HANDLING MIDDLEWARE
 // ==========================================
 app.use((err, req, res, next) => {
-    console.error(`[Exception]: ${err.message}`);
-    res.status(500).json({
+    console.error(`[Exception]: ${err.stack || err.message}`);
+    const showStack = req.query.debug === '1' || req.headers['x-debug'] === '1';
+    const payload = {
         error: true,
         message: err.message
-    });
+    };
+    if (showStack || true) payload.stack = err.stack;
+    res.status(500).json(payload);
 });
 
 // Start the server
