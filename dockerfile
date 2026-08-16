@@ -19,6 +19,10 @@ COPY src/api/. .
 # Exponemos el puerto que utiliza la API
 EXPOSE 3000
 
+#health check 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+
 # Por seguridad, cambiamos al usuario 'node' (incluido en la imagen oficial) 
 # en lugar de ejecutar la app como root
 USER node
