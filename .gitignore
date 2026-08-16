@@ -56,3 +56,4 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 src/api/node_modules
+src/api/npm-debug.log
