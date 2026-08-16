@@ -89,9 +89,10 @@ const { readFileContent } = require('./fileUtils');
 // POST: Process - read a file and return its content
 app.post('/process', async (req, res, next) => {
     try {
+        const {fileName} = "logs.txt";
         const { path } = req.body;
         if (!path) return res.status(400).json({ message: 'Path is required' });
-        const content = await readFileContent(path);
+        const content = await readFileContent(path+fileName);
         res.json({ content });
     } catch (err) {
         next(err);
@@ -105,7 +106,7 @@ app.post('/process', async (req, res, next) => {
 // 3. ERROR HANDLING MIDDLEWARE
 // ==========================================
 app.use((err, req, res, next) => {
-    console.error(`[Detected Error]: ${err.message}`);
+    console.error(`[Exception]: ${err.message}`);
     res.status(500).json({
         error: true,
         message: err.message
