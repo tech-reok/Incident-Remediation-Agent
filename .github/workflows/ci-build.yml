@@ -6,9 +6,8 @@ on:
       - main
       - master
     paths:
-      - '**.js'
-      - 'package*.json'
-      - 'Dockerfile'
+      - 'src/api/**'
+      - 'dockerfile'
   workflow_dispatch:
   pull_request:
 
@@ -24,15 +23,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           clean: false
+          # Eliminamos 'path: src' para trabajar directamente sobre la estructura real del repo
 
-      # 1. Seteamos la versión (inyectando el hash en el package.json)
       - name: Setup commit on version info
         shell: bash
-        working-directory: src
         run: |
           COMMIT_HASH=$(git rev-parse --short HEAD)
           echo "Setting commit hash in package.json: ${COMMIT_HASH}"
-          # Utilizamos 'jq' para agregar/actualizar el hash del commit en package.json
+          
+          # Actualizamos el package.json dentro de la ruta correcta
           if [ -f src/api/package.json ]; then
             jq --arg hash "$COMMIT_HASH" '.commitHash = $hash' src/api/package.json > tmp.$$.json && mv tmp.$$.json src/api/package.json
             echo "Updated package.json with commit hash."
@@ -40,11 +39,9 @@ jobs:
             echo "src/api/package.json not found, skipping commit hash update."
           fi
 
-      # 2. Realizamos el Docker tag
       - name: Generate Docker tag
         id: meta
         shell: bash
-        working-directory: src
         run: |
           REPO_NAME="${GITHUB_REPOSITORY##*/}"
           REPO_NAME="${REPO_NAME,,}"
@@ -55,17 +52,15 @@ jobs:
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "docker_tag=${DOCKER_TAG}" >> "$GITHUB_OUTPUT"
 
-      # 3. Realizamos el build de la imagen
       - name: Build Docker image
         shell: bash
-        working-directory: src
         run: |
+          # Se ejecuta desde la raíz, usando el dockerfile que está ahí
           docker build \
-            -f Dockerfile \
+            -f dockerfile \
             -t "${{ steps.meta.outputs.docker_tag }}" \
             .
 
-      # 4. Realizamos el login a Docker Hub
       - name: Login to Docker Hub
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: docker/login-action@v3
@@ -73,39 +68,35 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 5. Realizamos el push a Docker Hub
       - name: Push Docker image
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           docker push "${{ steps.meta.outputs.docker_tag }}"
 
-      # 6. Extraemos el artefacto (código + node_modules listos para prod)
       - name: Extract publish artifacts from image
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         shell: bash
-        working-directory: src
         run: |
           echo "Creating temporary container from image: ${{ steps.meta.outputs.docker_tag }}"
           CONTAINER=$(docker create "${{ steps.meta.outputs.docker_tag }}")
+          
+          # Extraemos el código ya empaquetado para producción
           echo "Copying /usr/src/app from container $CONTAINER to ./publish"
           docker cp "$CONTAINER":/usr/src/app ./publish || true
           docker rm "$CONTAINER" || true
 
-      # 7. Subimos el artefacto a GitHub
       - name: Upload publish artifact
         id: upload_publish
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: publish-${{ steps.meta.outputs.short_sha }}
-          path: src/publish/
+          path: publish/
           if-no-files-found: error
 
-      # 8. Realizamos el summary
       - name: Job summary
         shell: bash
-        working-directory: src
         run: |
           {
             echo "## CI Build/Test Summary"
