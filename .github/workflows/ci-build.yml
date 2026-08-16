@@ -24,7 +24,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           clean: false
-          path: src
 
       # 1. Seteamos la versión (inyectando el hash en el package.json)
       - name: Setup commit on version info
@@ -34,11 +33,11 @@ jobs:
           COMMIT_HASH=$(git rev-parse --short HEAD)
           echo "Setting commit hash in package.json: ${COMMIT_HASH}"
           # Utilizamos 'jq' para agregar/actualizar el hash del commit en package.json
-          if [ -f package.json ]; then
-            jq --arg hash "$COMMIT_HASH" '.commitHash = $hash' package.json > tmp.$$.json && mv tmp.$$.json package.json
+          if [ -f src/api/package.json ]; then
+            jq --arg hash "$COMMIT_HASH" '.commitHash = $hash' src/api/package.json > tmp.$$.json && mv tmp.$$.json src/api/package.json
             echo "Updated package.json with commit hash."
           else
-            echo "package.json not found, skipping commit hash update."
+            echo "src/api/package.json not found, skipping commit hash update."
           fi
 
       # 2. Realizamos el Docker tag

@@ -8,13 +8,13 @@ ENV NODE_ENV=production
 WORKDIR /usr/src/app
 
 # Copiamos los archivos de definición de dependencias
-COPY package*.json ./
+COPY src/api/package*.json ./
 
 # Instalamos las dependencias de manera limpia y optimizada
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copiamos el resto del código de la aplicación
-COPY . .
+COPY src/api/. .
 
 # Exponemos el puerto que utiliza la API
 EXPOSE 3000
