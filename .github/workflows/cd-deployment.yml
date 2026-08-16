@@ -1,0 +1,62 @@
+name: CD Local Deploy Node API
+
+on:
+  workflow_dispatch:
+    inputs:
+      docker_tag:
+        description: 'Dockerhub image tag (e.g., marcocantugea/incident-remediation-agent:sha)'
+        required: true
+
+jobs:
+  deploy-local:
+    runs-on: [self-hosted, Linux, X64, tech-reok-builders]
+
+    steps:
+      - name: Cleanup workspace as root
+        shell: bash
+        run: |
+          # Utilizamos una imagen ligera para limpiar el directorio con permisos root
+          docker run --rm -v "${{ github.workspace }}:/workspace" busybox sh -c "rm -rf /workspace/*"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          clean: true
+
+      - name: Extract Artifacts from Node Image
+        run: |
+          # Hacemos pull de la imagen con la etiqueta proporcionada
+          docker pull ${{ github.event.inputs.docker_tag }}
+          
+          # Limpiamos y extraemos los archivos (código + node_modules) a deploy_temp
+          rm -rf ./deploy_temp && mkdir -p ./deploy_temp
+          CID=$(docker create ${{ github.event.inputs.docker_tag }})
+          # Extraemos desde el WORKDIR del contenedor de Node
+          docker cp $CID:/usr/src/app/. ./deploy_temp
+          docker rm $CID
+          chmod -R 755 ./deploy_temp
+
+      - name: Fix Permissions
+        run: |
+          chmod -R 755 ./deploy_temp
+          chown -R 1000:1000 ./deploy_temp
+
+      - name: Deploy with Docker Compose
+        run: |
+          # Pasamos el tag como variable de entorno (por si la usas en el compose)
+          export DOCKER_TAG=${{ github.event.inputs.docker_tag }}
+          
+          # Se corrigió el typo de 'docker-compse.yml'
+          docker compose -f .github/docker-compose.yml up -d --force-recreate --build
+
+      - name: Verify Deployment
+        run: |
+          # Buscamos el nombre del contenedor definido en el compose de Node
+          docker ps | grep incident_remediation_api
+          echo "Deployment finished on port 3000"
+
+      - name: Debug Path and Content
+        run: |
+          echo "Current Path: $(pwd)"
+          echo "Checking deploy_temp content:"
+          ls -R ./deploy_temp
