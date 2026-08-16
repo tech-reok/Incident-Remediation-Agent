@@ -136,10 +136,26 @@ When using the tool to create the final GitHub Issue, the body MUST be formatted
 ### Root Cause
 [Explain exactly why the error occurred based on your code inspection]
 
+## Affected Files
+[List the exact relative repository paths of all files that need modification. e.g., `- src/index.js`]
+
 ## Proposed Change
 ### Objective
-[What needs to be achieved]
+[Clear and concise statement of what the fix achieves]
+
 ### Implementation Instructions
-[Provide exact, step-by-step instructions and code snippets for the Local Code Agent to apply the fix. Specify file paths exactly as they appear in the repository.]
+[You MUST provide EXTREMELY DETAILED, foolproof instructions for the Local Code Agent. The Local Code Agent is an automated system, so instructions must be literal, exact, and unambiguous.]
+
+For each file, specify:
+1. **Target Location:** Exactly which function, method, class, or logical block needs changing.
+2. **Logic Modification:** Explain exactly what code logic to remove and what to add.
+3. **Edge Cases & Error Handling:** Specify mandatory null checks (e.g., verifying `req.body` exists before destructuring), type validations, or try-catch blocks to prevent regressions.
+4. **Code Snippets:** Provide the exact replacement code blocks with appropriate syntax highlighting. 
+
+## Tests & Validation
+### Required Tests
+[Detail what specific tests must be written or updated by the Local Code Agent to prove this issue is resolved]
+### Acceptance Criteria
+[List the exact conditions that must be met for this fix to be considered successful and ready for a Pull Request]
 
 Do not generate verbal confirmations. Your final action in the workflow must be executing the tool to create this Issue.
