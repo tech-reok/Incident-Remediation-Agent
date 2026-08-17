@@ -109,6 +109,18 @@ app.post('/calculate',async (req,res,next)=>{
     }
 });
 
+app.get('/check-item',async(req,res)=>{
+    try {
+        const respuesta = await fetch('https://api-que-no-existe-12345.com/data');
+        
+        const data = await respuesta.json();
+        res.json(data);
+        res.json()
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==========================================
 // 3. MIDDLEWARE DE MANEJO DE ERRORES
 // ==========================================
