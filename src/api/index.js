@@ -9,16 +9,16 @@ let items = [
     { id: 1, nombre: 'Item inicial' }
 ];
 
-// ==========================================
+// ================================
 // 1. HEALTH CHECK
-// ==========================================
+// ================================
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', timestamp: new Date() });
 });
 
-// ==========================================
+// ================================
 // 2. CRUD DE ITEMS
-// ==========================================
+// ================================
 
 // GET: Get all items
 app.get('/items', (req, res) => {
@@ -48,7 +48,7 @@ app.post('/items', (req, res, next) => {
         };
         items.push(nuevoItem);
         res.status(201).json(nuevoItem);
-        } catch (error) {
+    } catch (error) {
         // Send the error to the error handling middleware
         next(error); 
     }
@@ -89,7 +89,7 @@ const { readFileContent } = require('./fileUtils');
 // POST: Process - read a file and return its content
 app.post('/process', async (req, res, next) => {
     try {
-        const {fileName} = "logs.txt";
+        const { fileName } = "logs.txt";
         const { path } = req.body;
         if (!path) return res.status(400).json({ message: 'Path is required' });
         const content = await readFileContent(path+fileName);
@@ -101,7 +101,44 @@ app.post('/process', async (req, res, next) => {
 
 app.post('/calculate',async (req,res,next)=>{
     try {
-        const { firstNumber,secondNumber } =  req.body;
+        if (req.body == null || typeof req.body !== 'object' || Array.isArray(req.body)) {
+            return res.status(400).json({
+                error: 'Request body is required and must be a JSON object.'
+            });
+        }
+
+        const firstNumberValue = req.body.firstNumber;
+        if (firstNumberValue === undefined || firstNumberValue === null ||
+            (typeof firstNumberValue !== 'number' && typeof firstNumberValue !== 'string') ||
+            (typeof firstNumberValue === 'string' && firstNumberValue.trim() === '')) {
+            return res.status(400).json({
+                error: 'The "firstNumber" field is required.'
+            });
+        }
+
+        const firstNumber = Number(firstNumberValue);
+        if (Number.isNaN(firstNumber) || !Number.isFinite(firstNumber)) {
+            return res.status(400).json({
+                error: 'The "firstNumber" field must be a valid number.'
+            });
+        }
+
+        const secondNumberValue = req.body.secondNumber;
+        if (secondNumberValue === undefined || secondNumberValue === null ||
+            (typeof secondNumberValue !== 'number' && typeof secondNumberValue !== 'string') ||
+            (typeof secondNumberValue === 'string' && secondNumberValue.trim() === '')) {
+            return res.status(400).json({
+                error: 'The "secondNumber" field is required.'
+            });
+        }
+
+        const secondNumber = Number(secondNumberValue);
+        if (Number.isNaN(secondNumber) || !Number.isFinite(secondNumber)) {
+            return res.status(400).json({
+                error: 'The "secondNumber" field must be a valid number.'
+            });
+        }
+
         const result= firstNumber/secondNumber;
         res.json({result: result});
     } catch (error) {
@@ -109,12 +146,12 @@ app.post('/calculate',async (req,res,next)=>{
     }
 });
 
-// ==========================================
+// ================================
 // 3. MIDDLEWARE DE MANEJO DE ERRORES
-// ==========================================
-// ==========================================
+// ================================
+// ================================
 // 3. ERROR HANDLING MIDDLEWARE
-// ==========================================
+// ================================
 app.use((err, req, res, next) => {
     console.error(`[Exception]: ${err.stack || err.message}`);
     const showStack = req.query.debug === '1' || req.headers['x-debug'] === '1';
