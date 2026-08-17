@@ -9,16 +9,16 @@ let items = [
     { id: 1, nombre: 'Item inicial' }
 ];
 
-// ==========================================
+// ================================
 // 1. HEALTH CHECK
-// ==========================================
+// ================================
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', timestamp: new Date() });
 });
 
-// ==========================================
+// ================================
 // 2. CRUD DE ITEMS
-// ==========================================
+// ================================
 
 // GET: Get all items
 app.get('/items', (req, res) => {
@@ -48,7 +48,7 @@ app.post('/items', (req, res, next) => {
         };
         items.push(nuevoItem);
         res.status(201).json(nuevoItem);
-        } catch (error) {
+    } catch (error) {
         // Send the error to the error handling middleware
         next(error); 
     }
@@ -102,31 +102,31 @@ app.post('/process', async (req, res, next) => {
 app.post('/calculate',async (req,res,next)=>{
     try {
         const { firstNumber,secondNumber } =  req.body;
-        const result= firstNumber/secondNumber;
+        const result=firstNumber/secondNumber;
         res.json({result: result});
     } catch (error) {
         next(error);
     }
 });
 
-app.get('/check-item',async(req,res)=>{
+app.get('/check-item',async (req,res,next)=>{
     try {
-        const respuesta = await fetch('https://api-que-no-existe-12345.com/data');
+        const respuest = await fetch('https://api-que-no-existe-12345.com/data');
         
-        const data = await respuesta.json();
+        const data = await respuest.json();
         res.json(data);
         res.json()
     } catch (error) {
-        next(error);
+        return next(error);
     }
 });
 
-// ==========================================
+// ================================
 // 3. MIDDLEWARE DE MANEJO DE ERRORES
-// ==========================================
-// ==========================================
+// ================================
+// ================================
 // 3. ERROR HANDLING MIDDLEWARE
-// ==========================================
+// ================================
 app.use((err, req, res, next) => {
     console.error(`[Exception]: ${err.stack || err.message}`);
     const showStack = req.query.debug === '1' || req.headers['x-debug'] === '1';
