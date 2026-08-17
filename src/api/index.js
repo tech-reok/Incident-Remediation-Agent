@@ -9,16 +9,16 @@ let items = [
     { id: 1, nombre: 'Item inicial' }
 ];
 
-// ==========================================
+// ================================
 // 1. HEALTH CHECK
-// ==========================================
+// ================================
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', timestamp: new Date() });
 });
 
-// ==========================================
+// ================================
 // 2. CRUD DE ITEMS
-// ==========================================
+// ================================
 
 // GET: Get all items
 app.get('/items', (req, res) => {
@@ -90,8 +90,23 @@ const { readFileContent } = require('./fileUtils');
 app.post('/process', async (req, res, next) => {
     try {
         const {fileName} = "logs.txt";
-        const { path } = req.body;
-        if (!path) return res.status(400).json({ message: 'Path is required' });
+        const body = req.body;
+
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+            return res.status(400).json({
+                error: 'Request body must be a JSON object containing a valid path field.'
+            });
+        }
+
+        const requestedPath = body.path;
+
+        if (typeof requestedPath !== 'string' || requestedPath.trim() === '') {
+            return res.status(400).json({
+                error: 'The "path" field is required and must be a non-empty string.'
+            });
+        }
+
+        const path = requestedPath.trim();
         const content = await readFileContent(path+fileName);
         res.json({ content });
     } catch (err) {
@@ -99,12 +114,12 @@ app.post('/process', async (req, res, next) => {
     }
 });
 
-// ==========================================
+// ================================
 // 3. MIDDLEWARE DE MANEJO DE ERRORES
-// ==========================================
-// ==========================================
+// ================================
+// ================================
 // 3. ERROR HANDLING MIDDLEWARE
-// ==========================================
+// ================================
 app.use((err, req, res, next) => {
     console.error(`[Exception]: ${err.stack || err.message}`);
     const showStack = req.query.debug === '1' || req.headers['x-debug'] === '1';
