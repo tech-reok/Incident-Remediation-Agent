@@ -99,6 +99,16 @@ app.post('/process', async (req, res, next) => {
     }
 });
 
+app.post('/calculate',async (req,res,next)=>{
+    try {
+        const { firstNumber,secondNumber } =  req.body;
+        const result= firstNumber/secondNumber;
+        res.json({result: result});
+    } catch (error) {
+        next(error);
+    }
+});
+
 // ==========================================
 // 3. MIDDLEWARE DE MANEJO DE ERRORES
 // ==========================================
