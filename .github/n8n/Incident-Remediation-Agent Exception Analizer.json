@@ -1,0 +1,541 @@
+{
+  "name": "Incident-Remediation-Agent Exception Analizer",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        -64
+      ],
+      "id": "3bb34dad-9df1-4bbf-acc4-2092218eaf6d",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "incident_remediation_api"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        -64
+      ],
+      "id": "6f2048ec-c889-49b5-b64d-75c08086bf27",
+      "name": "Execute a command",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "WkMwqX5EMISP5pP6",
+          "name": "SSH IRA Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Accedemos al campo stdout del nodo anterior\nlet stdout = $input.first().json.stdout;\n\n// Normalizamos los saltos de línea si n8n los está mostrando como caracteres literales '\\n'\nstdout = stdout.replace(/\\\\n/g, '\\n');\n\n// Expresión regular para capturar bloques que inician con [Exception]:\nconst exceptionRegex = /\\[Exception\\]:([\\s\\S]*?)(?=\\n\\[Exception\\]:|$)/g;\n\n// Usaremos un objeto como diccionario para agrupar las excepciones únicas\nconst uniqueExceptions = {};\nlet match;\n\n// Iteramos sobre todas las excepciones encontradas en el log\nwhile ((match = exceptionRegex.exec(stdout)) !== null) {\n    let rawException = match[1].trim();\n    let lines = rawException.split('\\n');\n\n    // Extraemos la firma (signature) y el stack trace\n    let signature = lines[0].trim();\n    let stackTrace = lines.slice(1).join('\\n').trim();\n\n    // Verificamos si esta firma ya existe en nuestro diccionario\n    if (!uniqueExceptions[signature]) {\n        // Si no existe, la registramos por primera vez\n        uniqueExceptions[signature] = {\n            type: \"Exception\",\n            signature: signature,\n            stackTrace: stackTrace,\n            fullError: match[0].trim(),\n            occurrences: 1 // Iniciamos el contador\n        };\n    } else {\n        // Si ya existe, simplemente incrementamos el contador de incidencias\n        uniqueExceptions[signature].occurrences++;\n    }\n}\n\n// Convertimos el diccionario con los valores únicos de vuelta al formato de array que n8n espera\nconst exceptions = Object.values(uniqueExceptions).map(item => {\n    return { json: item };\n});\n\n// Si no se encuentran excepciones, devolvemos un mensaje\nif (exceptions.length === 0) {\n    return [{ json: { status: \"No exceptions found\", originalLog: stdout } }];\n}\n\n// n8n procesará cada excepción única en el array\nreturn exceptions;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        -64
+      ],
+      "id": "f42cdaa3-2445-4230-88c6-7c4d3a097f74",
+      "name": "Extract the exceptions found"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=this is the exceptions we need  to review.\n{{ $json.toJsonString() }}",
+        "options": {
+          "systemMessage": "===================================================\nEXISTING ISSUE CHECK (PRE-FLIGHT)\n==================================================\n\nBefore inspecting any source code, you MUST fetch existing GitHub issues related to the current incident.\n\n1. Extract key identifying terms from the exception signature.\n2. Use the GitHub tool to fetch open issues.\n3. Compare the results to the current stack trace and exception.\n\nEMPTY RESULTS RULE (GREEN LIGHT):\nIf the tool returns an empty list, no data, or if none of the returned issues match the current exception, THIS IS SUCCESS. It means there is no duplicate. You MUST immediately PROCEED to code investigation and Change Request generation.\n\nDUPLICATE FOUND RULE (RED LIGHT):\nIf, and ONLY if, you find an open issue that tracks this EXACT problem:\n- DO NOT generate a Change Request.\n- DO NOT inspect the repository files.\n- HALT execution immediately and output strictly this format:\n  \"DUPLICATE_INCIDENT_HALT: Issue #[Issue Number] already tracks this problem. URL: [Issue URL]\"\n\nGITHUB REPOSITORY INVESTIGATION\n==================================================\n\nYou have read-only access to the GitHub repository through tools.\n\nUse GitHub tools to inspect the repository when necessary.\n\nInvestigation order:\n\n1. Analyze the exception and its signature.\n2. SEARCH EXISTING ISSUES: Use the GitHub tool to search for open issues matching the exception signature.\n3. If an exact match is found in an existing issue, HALT the process. Do not proceed to code inspection.\n4. If no matching issue exists, analyze the stack trace.\n5. Identify the most likely source file and function.\n6. Use GitHub tools to retrieve the relevant file (following directory navigation rules).\n7. Inspect related code only when necessary.\n8. Do not inspect the entire repository.\n9. IGNORE EXTERNAL DEPENDENCIES: Focus exclusively on the application's proprietary source code.\n10. CREATE THE CHANGE REQUEST: Once the root cause is identified and the fix is designed, use the GitHub tool to create a new Issue containing the full Markdown report.\n\nUse the repository as the source of truth for code structure.\n\nNever assume that a file, class, method, or directory exists.\nVerify it using GitHub tools.\n\nIf the stack trace references:\n\nfile:line\n\nuse that information to locate the source code.\n\nIf the referenced file cannot be found, report:\n\n\"Source file not found\"\n\nDo not invent its contents.\n\n==================================================\nINCIDENT DEDUPLICATION & GROUPING\n==================================================\n\nYou will receive log payloads that may contain multiple instances of the exact same exception.\n\nBefore beginning your diagnosis, you must group these related events based on their exception signature, file, method, and stack trace.\n\nTreat identical recurring errors as a single actionable incident.\n\nDo not analyze each duplicate individually. You must generate only ONE Change Request that addresses the root cause of the grouped incident.\n\n==================================================\nCONTAINER PATH VS REPOSITORY PATH\n==================================================\n\nStack traces may contain paths from inside a Docker container.\n\nDo not assume that a container path is identical to the repository path.\n\nFor example:\n\n/usr/src/app/index.js\n\nmay correspond to:\n\nindex.js\nsrc/index.js\napp/index.js\nsrc/app/index.js\n\nIf you identify a target file (e.g., 'index.js'), DO NOT assume it is in the root of the repository. You MUST use the 'List files in GitHub' tool to find its exact location.\n\nIf the 'List files' tool returns directories (like 'src/' or 'app/'), you MUST use the tool again to list the contents inside those specific directories until you find the exact path of the target file.\n\nOnly after confirming the exact relative path using the List tool, use the 'Get a file in GitHub' tool to download it.\n\nUse the repository structure and project configuration to determine the actual repository path.\n\nYou MUST ALWAYS use the GitHub List tool FIRST to verify the exact relative repository path of a file before attempting to retrieve it with the Get File tool.\n\nNever fabricate a repository path.\n\n==================================================\nREAD-ONLY REPOSITORY RULE (EXCEPT ISSUES)\n==================================================\n\nYou are strictly prohibited from modifying source code directly.\n\nYou MUST NOT:\n- create code files\n- update code files\n- delete code files\n- create branches\n- create commits\n- push changes\n- create pull requests\n\nYour ONLY write permission is to CREATE a GitHub Issue containing the final Change Request.\n\n==================================================\nFINAL OUTPUT: CHANGE REQUEST FORMAT\n==================================================\n\nWhen using the tool to create the final GitHub Issue, the body MUST be formatted in Markdown and include the following sections exactly:\n\n## Metadata\n- **Incident ID:** [Generate a timestamp-based ID]\n- **Severity:** [Determine severity based on the exception]\n- **Occurrences:** [Number of times the error repeated]\n\n## Incident\n### Error\n[The exception signature]\n### Stack Trace\n[Relevant parts of the stack trace]\n\n## Diagnosis\n### Root Cause\n[Explain exactly why the error occurred based on your code inspection]\n\n## Affected Files\n[List the exact relative repository paths of all files that need modification. e.g., `- src/index.js`]\n\n## Proposed Change\n### Objective\n[Clear and concise statement of what the fix achieves]\n\n### Implementation Instructions\n[You MUST provide EXTREMELY DETAILED, foolproof instructions for the Local Code Agent. The Local Code Agent is an automated system, so instructions must be literal, exact, and unambiguous.]\n\nFor each file, specify:\n1. **Target Location:** Exactly which function, method, class, or logical block needs changing.\n2. **Logic Modification:** Explain exactly what code logic to remove and what to add.\n3. **Edge Cases & Error Handling:** Specify mandatory null checks (e.g., verifying `req.body` exists before destructuring), type validations, or try-catch blocks to prevent regressions.\n4. **Code Snippets:** Provide the exact replacement code blocks with appropriate syntax highlighting. \n\n## Tests & Validation\n### Required Tests\n[Detail what specific tests must be written or updated by the Local Code Agent to prove this issue is resolved]\n### Acceptance Criteria\n[List the exact conditions that must be met for this fix to be considered successful and ready for a Pull Request]\n\nDo not generate verbal confirmations. Your final action in the workflow must be executing the tool to create this Issue."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        208,
+        -80
+      ],
+      "id": "0e6cb005-2e24-4e6b-a044-9c36f6dffd3c",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.4",
+          "mode": "list",
+          "cachedResultName": "gpt-5.4"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        176
+      ],
+      "id": "6adb9425-c433-4ce8-8a17-78f04e9020b3",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "TuNFmcglEmogezQj",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $workflow.id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        208,
+        160
+      ],
+      "id": "834bfeac-bc35-47f5-b892-f21150a7e1cb",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "get",
+        "owner": {
+          "__rl": true,
+          "value": "tech-reok",
+          "mode": "list",
+          "cachedResultName": "tech-reok",
+          "cachedResultUrl": "https://github.com/tech-reok"
+        },
+        "repository": {
+          "__rl": true,
+          "value": "Incident-Remediation-Agent",
+          "mode": "list",
+          "cachedResultName": "Incident-Remediation-Agent",
+          "cachedResultUrl": "https://github.com/tech-reok/Incident-Remediation-Agent"
+        },
+        "filePath": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('File_Path', ``, 'string') }}",
+        "additionalParameters": {}
+      },
+      "type": "n8n-nodes-base.githubTool",
+      "typeVersion": 1.1,
+      "position": [
+        512,
+        304
+      ],
+      "id": "85631293-4301-4731-b7a7-744a6b502872",
+      "name": "Get a file in GitHub",
+      "webhookId": "a886e68e-86bf-4c8c-a0fe-670cf1fea8fe",
+      "credentials": {
+        "githubApi": {
+          "id": "fnGk5ukDRBgIGghG",
+          "name": "GitHub account"
+        }
+      },
+      "notes": "Read a file from the configured GitHub repository.\n\nUse this tool to inspect source code, configuration files, tests, project files, and other repository files relevant to the incident.\n\nOnly read files that are relevant to the exception, stack trace, or root cause investigation.\n\nDo not attempt to modify files.\n\nBefore using this tool:\n1. Identify the likely file from the stack trace or repository structure.\n2. Request only the specific file needed.\n3. If additional context is required, request the related file explicitly.\n\nDo not read the entire repository.\nDo not request generated files, dependencies, binaries, build artifacts, node_modules, bin, obj, dist, vendor, or other generated directories unless the incident explicitly requires them."
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "list",
+        "owner": {
+          "__rl": true,
+          "value": "tech-reok",
+          "mode": "list",
+          "cachedResultName": "tech-reok",
+          "cachedResultUrl": "https://github.com/tech-reok"
+        },
+        "repository": {
+          "__rl": true,
+          "value": "Incident-Remediation-Agent",
+          "mode": "list",
+          "cachedResultName": "Incident-Remediation-Agent",
+          "cachedResultUrl": "https://github.com/tech-reok/Incident-Remediation-Agent"
+        },
+        "filePath": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Path', ``, 'string') }}"
+      },
+      "type": "n8n-nodes-base.githubTool",
+      "typeVersion": 1.1,
+      "position": [
+        384,
+        144
+      ],
+      "id": "458d9b55-df17-4101-b544-3dec2e0bc9ef",
+      "name": "List files in GitHub",
+      "webhookId": "69190a3b-56f2-4612-82a2-7d1c148283d5",
+      "credentials": {
+        "githubApi": {
+          "id": "fnGk5ukDRBgIGghG",
+          "name": "GitHub account"
+        }
+      },
+      "notes": "Use this tool to inspect the structure of the GitHub repository.\n\nUse it when the stack trace does not provide enough information to determine the exact source file.\n\nPrefer listing a specific directory instead of the entire repository.\n\nDo not recursively enumerate the entire repository unless absolutely necessary.\n\nDo not modify anything."
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "owner": {
+          "__rl": true,
+          "value": "tech-reok",
+          "mode": "list",
+          "cachedResultName": "tech-reok",
+          "cachedResultUrl": "https://github.com/tech-reok"
+        },
+        "repository": {
+          "__rl": true,
+          "value": "Incident-Remediation-Agent",
+          "mode": "list",
+          "cachedResultName": "Incident-Remediation-Agent",
+          "cachedResultUrl": "https://github.com/tech-reok/Incident-Remediation-Agent"
+        },
+        "issueNumber": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Issue_Number', ``, 'number') }}"
+      },
+      "type": "n8n-nodes-base.githubTool",
+      "typeVersion": 1.1,
+      "position": [
+        544,
+        112
+      ],
+      "id": "85dca18d-b97c-4c69-96f2-92e1ecd9c695",
+      "name": "Get an issue in GitHub",
+      "webhookId": "7442a2d4-e1d3-4577-80fd-6ce5eba18cad",
+      "credentials": {
+        "githubApi": {
+          "id": "fnGk5ukDRBgIGghG",
+          "name": "GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "repository",
+        "owner": {
+          "__rl": true,
+          "value": "tech-reok",
+          "mode": "list",
+          "cachedResultName": "tech-reok",
+          "cachedResultUrl": "https://github.com/tech-reok"
+        },
+        "repository": {
+          "__rl": true,
+          "value": "Incident-Remediation-Agent",
+          "mode": "list",
+          "cachedResultName": "Incident-Remediation-Agent",
+          "cachedResultUrl": "https://github.com/tech-reok/Incident-Remediation-Agent"
+        },
+        "returnAll": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Return_All', ``, 'boolean') }}",
+        "getRepositoryIssuesFilters": {
+          "labels": "RIA-boot",
+          "state": "open"
+        }
+      },
+      "type": "n8n-nodes-base.githubTool",
+      "typeVersion": 1.1,
+      "position": [
+        640,
+        304
+      ],
+      "id": "2d56c620-f179-4c84-9aa1-280a808ba2c9",
+      "name": "Get issues of a repository in GitHub",
+      "webhookId": "3004b93d-ece3-4b49-a43f-92d3d7f4dab9",
+      "credentials": {
+        "githubApi": {
+          "id": "fnGk5ukDRBgIGghG",
+          "name": "GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0af7dd27-4eb2-4ccf-ba3d-a195ecba6291",
+              "leftValue": "={{ $json.isEmpty() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -96,
+        -64
+      ],
+      "id": "32856143-f098-478a-be59-97d05682bb8f",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e94f349c-66df-4be6-938c-3b12f4a5e62e",
+              "leftValue": "={{ $json.output }}",
+              "rightValue": "DUPLICATE_INCIDENT_HALT",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        528,
+        -80
+      ],
+      "id": "f4c582c8-3e5c-457b-94f1-9e49d5247bc4",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "owner": {
+          "__rl": true,
+          "value": "tech-reok",
+          "mode": "list",
+          "cachedResultName": "tech-reok",
+          "cachedResultUrl": "https://github.com/tech-reok"
+        },
+        "repository": {
+          "__rl": true,
+          "value": "Incident-Remediation-Agent",
+          "mode": "list",
+          "cachedResultName": "Incident-Remediation-Agent",
+          "cachedResultUrl": "https://github.com/tech-reok/Incident-Remediation-Agent"
+        },
+        "title": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Title', ``, 'string') }}",
+        "body": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Body', ``, 'string') }}",
+        "labels": [
+          {
+            "label": "RIA-boot"
+          },
+          {
+            "label": "bug"
+          }
+        ],
+        "assignees": []
+      },
+      "type": "n8n-nodes-base.githubTool",
+      "typeVersion": 1.1,
+      "position": [
+        368,
+        336
+      ],
+      "id": "f531e087-a154-4edd-95d2-4147e1cf0c51",
+      "name": "Create an issue in GitHub",
+      "webhookId": "ac7326bf-9578-4a62-9ae4-68cb98248a11",
+      "credentials": {
+        "githubApi": {
+          "id": "fnGk5ukDRBgIGghG",
+          "name": "GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analize-container-logs",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -720,
+        160
+      ],
+      "id": "1988880d-4670-4775-8a7b-8c2f3cad4264",
+      "name": "Webhook",
+      "webhookId": "ea7e463e-4034-423e-b940-b665a74f0959"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Execute a command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a command": {
+      "main": [
+        [
+          {
+            "node": "Extract the exceptions found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract the exceptions found": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        []
+      ]
+    },
+    "Get a file in GitHub": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List files in GitHub": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get an issue in GitHub": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get issues of a repository in GitHub": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [],
+        []
+      ]
+    },
+    "Create an issue in GitHub": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Execute a command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "1ee2f0fe-a649-47ad-ab11-46c74076663d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5975cdd31587979c4c5ae46b8d3feee52c68b1633e27a6beb3c9eaf8acca5532"
+  },
+  "id": "ovrI5JAKnqH8dkGV",
+  "tags": []
+}
