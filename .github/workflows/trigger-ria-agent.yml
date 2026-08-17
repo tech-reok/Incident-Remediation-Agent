@@ -1,0 +1,17 @@
+name: Trigger RIA Agent Workflow
+
+# Permite ejecutar el workflow manualmente desde la pestaña "Actions" en GitHub
+on: 
+  workflow_dispatch:
+
+jobs:
+  call-webhook:
+    runs-on: [self-hosted, Linux, X64, tech-reok-builders]
+
+    steps:
+      - name: Make POST request to n8n
+        # Usamos curl para enviar la petición POST al webhook de producción
+        run: |
+          curl -X POST "https://n8n.tech-reok.dev/webhook/analize-container-logs" \
+          -H "Content-Type: application/json" \
+          -d '{}'
